@@ -1,0 +1,74 @@
+name: Deploy Databricks Asset Bundles
+
+# Deploys the Lakeflow pipelines and jobs (L5 Workloads) that Terraform
+# deliberately does not own (Technical Approach, Section 7: "Pipelines and
+# jobs via Asset Bundles (not Terraform)"). Bundle source lives outside
+# 03-Infra - this workflow only orchestrates `databricks bundle deploy`
+# against the workspace Terraform already built.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "05-Workloads/**" # Asset Bundle source (pipelines, jobs, SQL) -
+      # not part of this delivery's scope, but this workflow assumes that
+      # directory once pipeline/job development starts.
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options: [dev, staging, production]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TARGET_ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+
+jobs:
+  deploy-bundle:
+    name: Deploy bundle (${{ env.TARGET_ENVIRONMENT }})
+    runs-on: ubuntu-latest
+    environment: ${{ env.TARGET_ENVIRONMENT }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      # AWS credentials must exist before any step touches the S3 backend -
+      # this was previously ordered after the Terraform state read below,
+      # which would fail every time in real CI (caught in review).
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TERRAFORM_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Read workspace host from Terraform state
+        id: tf_outputs
+        working-directory: 03-Infra/environments/${{ env.TARGET_ENVIRONMENT }}/20-databricks-account
+        run: |
+          terraform init -input=false
+          echo "workspace_host=https://$(terraform output -raw workspace_url)" >> "$GITHUB_OUTPUT"
+        continue-on-error: false
+
+      - name: Validate bundle
+        working-directory: 05-Workloads
+        env:
+          DATABRICKS_HOST: ${{ steps.tf_outputs.outputs.workspace_host }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: databricks bundle validate -t ${{ env.TARGET_ENVIRONMENT }}
+
+      - name: Deploy bundle
+        working-directory: 05-Workloads
+        env:
+          DATABRICKS_HOST: ${{ steps.tf_outputs.outputs.workspace_host }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: databricks bundle deploy -t ${{ env.TARGET_ENVIRONMENT }}

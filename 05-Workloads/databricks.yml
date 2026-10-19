@@ -1,0 +1,54 @@
+# Databricks Asset Bundle root config.
+#
+# SCOPE NOTE: this bundle defines the SHAPE of the five Phase 1 workloads
+# (matching Technical Approach Section 4.1) - pipeline/job resources,
+# cluster policy references, schedules, and parameters - so
+# deploy-asset-bundles.yml has something real to validate and deploy. The
+# source files under src/ are scaffolds: they set up the correct
+# structure (DLT table declarations, job entry points, parameter
+# contracts) with TODO markers at every point that needs real,
+# client-validated business logic (the exact dedup key, the exact
+# equivalization formula, the exact Aurora schema, etc.) - see each file's
+# header comment and the engagement README's "what's next" section. None
+# of this has been run against a real cluster.
+
+bundle:
+  name: castiron-lakehouse-phase1
+
+variables:
+  catalog_prefix:
+    description: "Unity Catalog catalog name prefix for this target, e.g. castiron-lakehouse-dev"
+  cluster_policy_id_streaming:
+    description: "Streaming pipeline cluster policy ID (from 03-Infra 40-workload-config output streaming_pipeline_policy_id)"
+  cluster_policy_id_batch:
+    description: "Batch job cluster policy ID (from 03-Infra 40-workload-config output batch_job_policy_id)"
+  instance_pool_id:
+    description: "Batch job spot instance pool ID (from 03-Infra 40-workload-config output batch_job_spot_pool_id)"
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: ${DATABRICKS_HOST}
+    variables:
+      catalog_prefix: castiron-lakehouse-dev
+
+  staging:
+    mode: production
+    workspace:
+      host: ${DATABRICKS_HOST}
+    variables:
+      catalog_prefix: castiron-lakehouse-staging
+
+  production:
+    mode: production
+    workspace:
+      host: ${DATABRICKS_HOST}
+    variables:
+      catalog_prefix: castiron-lakehouse-production
+    run_as:
+      service_principal_name: ${DATABRICKS_CLIENT_ID}

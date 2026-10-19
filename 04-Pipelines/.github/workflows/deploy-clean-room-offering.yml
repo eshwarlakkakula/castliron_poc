@@ -1,0 +1,125 @@
+name: Deploy clean-room offering
+
+# Runs scripts/register_clean_room_offering.sql against the Snowflake
+# provider account built by L5. Manual, workflow_dispatch only - this
+# links a new or updated offering into the partner's clean room, which is
+# an outward-facing action, not something to run on every merge.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment whose L5 Snowflake objects to use"
+        required: true
+        type: choice
+        options: [dev, staging, production]
+      iceberg_table_name:
+        description: "Unity Catalog table name to link, e.g. clean_room_contribution_events"
+        required: true
+        type: string
+      offering_title:
+        description: "Offering title shown to the partner"
+        required: true
+        type: string
+      offering_description:
+        description: "Offering description shown to the partner"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  register-offering:
+    name: Register offering (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}-clean-room # separate Environment from terraform-apply's,
+    # so clean-room publication can require its own reviewer, distinct
+    # from whoever approves infrastructure changes.
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TERRAFORM_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Read L5 Terraform outputs
+        id: tf_outputs
+        working-directory: 03-Infra/environments/${{ inputs.environment }}/50-interoperability
+        run: |
+          terraform init -input=false
+          echo "database_name=$(terraform output -raw clean_room_provider_database_name)" >> "$GITHUB_OUTPUT"
+          echo "schema_name=$(terraform output -raw clean_room_provider_schema_name | cut -d. -f2)" >> "$GITHUB_OUTPUT"
+          echo "catalog_integration_name=$(terraform output -raw databricks_iceberg_rest_catalog_integration_name)" >> "$GITHUB_OUTPUT"
+          echo "dcr_application_warehouse=$(terraform output -raw dcr_application_warehouse_name)" >> "$GITHUB_OUTPUT"
+
+      # VERIFY BEFORE FIRST RUN: confirm the current official Snowflake CLI
+      # setup action name/version in the GitHub Marketplace before relying
+      # on this step - action publishers and names do change.
+      - name: Install Snowflake CLI
+        uses: Snowflake-Labs/snowflake-cli-action@v1
+        with:
+          cli-version: "latest"
+
+      # Registers the Iceberg table and the offering, and starts the
+      # security scan (register_clean_room_offering.sql). Does not itself
+      # wait for the scan to finish - that is the next step, separated out
+      # so a slow scan doesn't make this step's timeout ambiguous with the
+      # SQL execution time.
+      - name: Run registration script
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+        run: |
+          snow sql \
+            -f 03-Infra/scripts/register_clean_room_offering.sql \
+            -D "database_name=${{ steps.tf_outputs.outputs.database_name }}" \
+            -D "schema_name=${{ steps.tf_outputs.outputs.schema_name }}" \
+            -D "catalog_integration_name=${{ steps.tf_outputs.outputs.catalog_integration_name }}" \
+            -D "dcr_application_warehouse=${{ steps.tf_outputs.outputs.dcr_application_warehouse }}" \
+            -D "iceberg_table_name=${{ inputs.iceberg_table_name }}" \
+            -D "offering_title=${{ inputs.offering_title }}" \
+            -D "offering_description=${{ inputs.offering_description }}"
+
+      # Actually polls and fails closed, matching what the SQL script's
+      # comment claims the pipeline does - a prior version of this
+      # workflow started the scan above and stopped, silently treating
+      # "scan started" as "scan passed" (caught in review). Default
+      # timeout 20 minutes / 30s interval; adjust to the Clean Rooms app's
+      # observed scan duration once measured.
+      # VERIFY BEFORE FIRST RUN: confirm the real status values and the
+      # exact system function name against the installed Clean Rooms app
+      # version - PASSED/FAILED/RUNNING below are illustrative.
+      - name: Poll security scan status and fail closed
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          OFFERING_TITLE: ${{ inputs.offering_title }}
+        run: |
+          timeout_seconds=1200
+          interval_seconds=30
+          elapsed=0
+          while [ "$elapsed" -lt "$timeout_seconds" ]; do
+            status=$(snow sql -q \
+              "SELECT SYSTEM\$GET_OFFERING_SECURITY_SCAN_STATUS('${OFFERING_TITLE}') AS status;" \
+              --format json | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['STATUS'])")
+            echo "Scan status after ${elapsed}s: ${status}"
+            if [ "$status" = "PASSED" ]; then
+              echo "Security scan passed - offering is eligible for promotion."
+              exit 0
+            fi
+            if [ "$status" = "FAILED" ]; then
+              echo "::error::Security scan FAILED for offering '${OFFERING_TITLE}'. Not promoting."
+              exit 1
+            fi
+            sleep "$interval_seconds"
+            elapsed=$((elapsed + interval_seconds))
+          done
+          echo "::error::Security scan did not reach a terminal status within ${timeout_seconds}s. Failing closed - not promoting."
+          exit 1

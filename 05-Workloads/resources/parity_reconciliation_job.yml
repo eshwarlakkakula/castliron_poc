@@ -1,0 +1,34 @@
+# Automated Redshift-vs-gold parity reconciliation, for the shadow-run
+# cutover gate (Technical Approach Section 2, Section 7.1). Runs daily
+# during the shadow period; the cutover decision for each of the 15
+# packaged reports depends on this job's output, not a manual comparison.
+
+resources:
+  jobs:
+    parity_reconciliation_job:
+      name: "${bundle.target}-parity-reconciliation-job"
+      schedule:
+        quartz_cron_expression: "0 0 8 * * ?" # after measurement + clean-room contribution
+        timezone_id: "UTC"
+      tasks:
+        - task_key: reconcile_redshift_vs_gold
+          job_cluster_key: batch_pool
+          notebook_task:
+            notebook_path: ../src/parity/redshift_parity_check.py
+            base_parameters:
+              # TODO(tolerance): placeholder until CastIron certifies the
+              # real reconciliation tolerance (Technical Approach Section
+              # 9). 0% forces every run to report every discrepancy,
+              # which is the safe default until a real number exists.
+              reconciliation_tolerance_pct: "0"
+      job_clusters:
+        - job_cluster_key: batch_pool
+          new_cluster:
+            policy_id: ${var.cluster_policy_id_batch}
+            instance_pool_id: ${var.instance_pool_id}
+            autoscale:
+              min_workers: 1
+              max_workers: 4
+      email_notifications:
+        on_failure:
+          - REPLACE_WITH_DATA_PLATFORM_TEAM_EMAIL

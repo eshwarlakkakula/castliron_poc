@@ -1,0 +1,31 @@
+# Copy to terraform.tfvars and fill in real values. Never commit
+# terraform.tfvars itself - it is listed in .gitignore. Secrets (account
+# IDs you consider sensitive, credentials) belong in GitHub Actions
+# secrets/variables and are passed via -var on the pipeline, not written
+# here in plaintext for anything beyond local, disposable dev testing.
+
+project_name = "castiron-lakehouse"
+environment  = "dev"
+aws_region   = "us-east-1"
+
+availability_zones         = ["us-east-1a", "us-east-1b"]
+vpc_cidr_block              = "10.20.0.0/16"
+private_subnet_cidr_blocks = ["10.20.0.0/20", "10.20.16.0/20"]
+public_subnet_cidr_blocks  = ["10.20.32.0/24", "10.20.33.0/24"]
+single_nat_gateway          = true
+
+key_administrator_arns = [
+  "arn:aws:iam::123456789012:role/PlatformAdministrators",
+]
+
+databricks_account_id = "00000000-0000-0000-0000-000000000000"
+
+create_kinesis_stream = true
+kinesis_shard_count    = 4
+
+tags = {
+  Project     = "castiron-lakehouse"
+  Environment = "dev"
+  ManagedBy   = "terraform"
+  CostCenter  = "data-platform"
+}

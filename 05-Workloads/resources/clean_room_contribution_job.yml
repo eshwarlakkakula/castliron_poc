@@ -1,0 +1,26 @@
+# Writes contribution tables as Delta with UniForm (Iceberg) metadata,
+# the CastIron side of the clean-room pattern (Technical Approach Section
+# 4.1, Section 6). This job does NOT touch Snowflake - it only produces
+# the Delta/UniForm tables that 03-Infra/modules/databricks-external-sharing
+# exposes read-only through the Iceberg REST Catalog.
+
+resources:
+  jobs:
+    clean_room_contribution_job:
+      name: "${bundle.target}-clean-room-contribution-job"
+      schedule:
+        quartz_cron_expression: "0 30 7 * * ?" # after measurement - adjust once dependencies are wired
+        timezone_id: "UTC"
+      tasks:
+        - task_key: write_contribution_tables
+          job_cluster_key: batch_pool
+          notebook_task:
+            notebook_path: ../src/clean_room/write_contribution_tables.py
+      job_clusters:
+        - job_cluster_key: batch_pool
+          new_cluster:
+            policy_id: ${var.cluster_policy_id_batch}
+            instance_pool_id: ${var.instance_pool_id}
+            autoscale:
+              min_workers: 1
+              max_workers: 2

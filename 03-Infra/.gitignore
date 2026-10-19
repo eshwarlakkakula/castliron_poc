@@ -1,0 +1,16 @@
+# Local Terraform working state - never committed. Lock files ARE
+# committed (standard practice, pins provider versions) - only the cache
+# directory and actual state/plan artifacts are ignored here.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+
+# Real variable values - only the .example files are committed
+terraform.tfvars
+*.auto.tfvars
+!*.tfvars.example
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,30 @@
+# Terraform local state and cache - never committed. Lock files ARE
+# committed (standard practice, pins provider versions) - only the cache
+# directory and actual state/plan artifacts are ignored here.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+
+# Real variable values - only the .example files are committed
+terraform.tfvars
+*.auto.tfvars
+!*.tfvars.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.tmp
+*.log
+00-Tooling/
+/README.md

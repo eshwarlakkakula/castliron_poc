@@ -1,0 +1,67 @@
+name: Terraform apply layer
+description: >
+  Init, validate, plan, and apply one Terraform layer. Shared by
+  terraform-apply.yml's per-layer jobs so the init/plan/apply sequence is
+  defined once, not duplicated across five near-identical job bodies.
+
+inputs:
+  layer:
+    description: "Layer directory name, e.g. 10-foundation"
+    required: true
+  environment:
+    description: "Environment name, e.g. dev, staging, production"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+
+    - uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.9.0"
+
+    - uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ vars.TERRAFORM_CI_ROLE_ARN }}
+        aws-region: ${{ vars.AWS_REGION }}
+
+    - name: Terraform init
+      shell: bash
+      working-directory: 03-Infra/environments/${{ inputs.environment }}/${{ inputs.layer }}
+      run: terraform init -input=false
+
+    - name: Terraform validate
+      shell: bash
+      working-directory: 03-Infra/environments/${{ inputs.environment }}/${{ inputs.layer }}
+      run: terraform validate
+
+    - name: Terraform plan
+      shell: bash
+      working-directory: 03-Infra/environments/${{ inputs.environment }}/${{ inputs.layer }}
+      env:
+        TF_VAR_databricks_account_id: ${{ vars.DATABRICKS_ACCOUNT_ID }}
+        DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+        DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+        SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+      run: terraform plan -input=false -var-file="terraform.tfvars" -out=tfplan.binary
+
+    # The environment-level required-reviewers gate (configured in repo
+    # Settings > Environments > <environment>) has already been satisfied
+    # by the time this step runs - GitHub holds the whole job, including
+    # the plan step above, until a reviewer approves. Apply runs
+    # immediately after that approval, against the plan file just
+    # produced, not a stale one.
+    - name: Terraform apply
+      shell: bash
+      working-directory: 03-Infra/environments/${{ inputs.environment }}/${{ inputs.layer }}
+      env:
+        TF_VAR_databricks_account_id: ${{ vars.DATABRICKS_ACCOUNT_ID }}
+        DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+        DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+        SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+      run: terraform apply -input=false -auto-approve tfplan.binary

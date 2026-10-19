@@ -1,0 +1,24 @@
+# Lakeflow Declarative Pipeline: bronze -> silver -> gold, replacing the
+# current-state ~950-line Redshift stored procedure (Technical Approach
+# Section 2, Section 4.1 "Streaming ingest"). Runs continuously while in
+# shadow alongside Redshift.
+
+resources:
+  pipelines:
+    event_streaming_pipeline:
+      name: "${bundle.target}-event-streaming-pipeline"
+      catalog: ${var.catalog_prefix}-bronze
+      target: event_pipeline
+      continuous: true
+      photon: true
+      clusters:
+        - label: default
+          policy_id: ${var.cluster_policy_id_streaming}
+          autoscale:
+            min_workers: 1
+            max_workers: 4
+      libraries:
+        - notebook:
+            path: ../src/streaming/bronze_silver_gold_pipeline.py
+      configuration:
+        pipeline.trigger.interval: "10 seconds"

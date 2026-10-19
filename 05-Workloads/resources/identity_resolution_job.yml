@@ -1,0 +1,23 @@
+# Daily identity resolution: 8M probes against the licensed identifier
+# table (Technical Approach Section 4.1 "Identity resolution").
+
+resources:
+  jobs:
+    identity_resolution_job:
+      name: "${bundle.target}-identity-resolution-job"
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?" # 06:00 daily - adjust once a real SLA is set
+        timezone_id: "UTC"
+      tasks:
+        - task_key: resolve_identity
+          job_cluster_key: batch_pool
+          notebook_task:
+            notebook_path: ../src/identity/resolve_identity.py
+      job_clusters:
+        - job_cluster_key: batch_pool
+          new_cluster:
+            policy_id: ${var.cluster_policy_id_batch}
+            instance_pool_id: ${var.instance_pool_id}
+            autoscale:
+              min_workers: 1
+              max_workers: 8

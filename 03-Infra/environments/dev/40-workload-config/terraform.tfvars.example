@@ -1,0 +1,13 @@
+project_name = "castiron-lakehouse"
+environment  = "dev"
+
+streaming_max_workers        = 4
+batch_max_workers            = 8
+databricks_runtime_version = "15.4.x-photon-scala2.12"
+
+tags = {
+  Project     = "castiron-lakehouse"
+  Environment = "dev"
+  ManagedBy   = "terraform"
+  CostCenter  = "data-platform"
+}

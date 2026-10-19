@@ -1,0 +1,30 @@
+# Exposure records, 30-day reach/frequency, equivalization, partner
+# delivery reconciliation, third-party validation ingest (Technical
+# Approach Section 4.1 "Measurement").
+
+resources:
+  jobs:
+    measurement_job:
+      name: "${bundle.target}-measurement-job"
+      schedule:
+        quartz_cron_expression: "0 0 7 * * ?" # after identity resolution - adjust once dependencies are wired
+        timezone_id: "UTC"
+      tasks:
+        - task_key: compute_exposures_and_reach
+          job_cluster_key: batch_pool
+          notebook_task:
+            notebook_path: ../src/measurement/compute_measurement.py
+        - task_key: ingest_third_party_validation
+          job_cluster_key: batch_pool
+          depends_on:
+            - task_key: compute_exposures_and_reach
+          notebook_task:
+            notebook_path: ../src/measurement/ingest_validation_files.py
+      job_clusters:
+        - job_cluster_key: batch_pool
+          new_cluster:
+            policy_id: ${var.cluster_policy_id_batch}
+            instance_pool_id: ${var.instance_pool_id}
+            autoscale:
+              min_workers: 1
+              max_workers: 4

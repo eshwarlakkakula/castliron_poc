@@ -1,0 +1,15 @@
+project_name = "castiron-lakehouse"
+environment  = "dev"
+
+snowflake_account_region = "aws_us_east_1"
+
+dcr_application_warehouse_size = "XSMALL"
+dcr_analysis_warehouse_size    = "XSMALL"
+monthly_credit_quota             = 25
+
+tags = {
+  Project     = "castiron-lakehouse"
+  Environment = "dev"
+  ManagedBy   = "terraform"
+  CostCenter  = "data-platform"
+}

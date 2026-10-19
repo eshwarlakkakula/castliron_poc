@@ -1,0 +1,112 @@
+name: Terraform apply
+
+# Applies every layer in strict order via explicit job dependencies
+# (needs:), not a matrix - a later layer's job literally cannot start
+# until the one before it has succeeded. Each job targets a GitHub
+# Environment named after TARGET_ENVIRONMENT; configure required reviewers
+# on that Environment in repo settings for the manual approval gate the
+# Technical Approach document (Section 7) and this repo's README describe
+# - this workflow enforces the gate exists, not what counts as approval.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to apply"
+        required: true
+        type: choice
+        options: [dev, staging, production]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_VERSION: "1.9.0"
+  TARGET_ENVIRONMENT: ${{ inputs.environment }}
+
+jobs:
+  apply-foundation:
+    name: Apply L1 - foundation
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: ./.github/actions/terraform-apply-layer
+        with:
+          layer: "10-foundation"
+          environment: ${{ inputs.environment }}
+
+  apply-databricks-account:
+    name: Apply L2 - Databricks account
+    needs: apply-foundation
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: ./.github/actions/terraform-apply-layer
+        with:
+          layer: "20-databricks-account"
+          environment: ${{ inputs.environment }}
+
+  apply-governance:
+    name: Apply L3 - governance
+    needs: apply-databricks-account
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: ./.github/actions/terraform-apply-layer
+        with:
+          layer: "30-governance"
+          environment: ${{ inputs.environment }}
+
+  apply-workload-config:
+    name: Apply L4 - workload config
+    needs: apply-governance
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: ./.github/actions/terraform-apply-layer
+        with:
+          layer: "40-workload-config"
+          environment: ${{ inputs.environment }}
+
+  apply-interoperability:
+    name: Apply L5 - interoperability
+    needs: apply-workload-config
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: ./.github/actions/terraform-apply-layer
+        with:
+          layer: "50-interoperability"
+          environment: ${{ inputs.environment }}
+
+  drift-check:
+    name: Post-apply drift check
+    needs: apply-interoperability
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    strategy:
+      matrix:
+        layer: [10-foundation, 20-databricks-account, 30-governance, 40-workload-config, 50-interoperability]
+      max-parallel: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TERRAFORM_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Confirm a fresh plan shows no changes
+        working-directory: 03-Infra/environments/${{ inputs.environment }}/${{ matrix.layer }}
+        env:
+          TF_VAR_databricks_account_id: ${{ vars.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+        run: |
+          terraform init -input=false
+          terraform plan -input=false -detailed-exitcode -var-file="terraform.tfvars"

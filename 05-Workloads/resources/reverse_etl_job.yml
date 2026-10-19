@@ -1,0 +1,23 @@
+# Hourly Spark JDBC upserts into Aurora MySQL (Technical Approach Section
+# 4.1 "Reverse-ETL"). Lakebase synced tables are the documented
+# alternative (Section 9/10.1) - not scaffolded here because the
+# JDBC-vs-Lakebase decision is still open.
+
+resources:
+  jobs:
+    reverse_etl_job:
+      name: "${bundle.target}-reverse-etl-job"
+      schedule:
+        quartz_cron_expression: "0 0 * * * ?" # hourly, matches the documented reverse-ETL freshness
+        timezone_id: "UTC"
+      tasks:
+        - task_key: upsert_to_aurora
+          job_cluster_key: batch_pool
+          notebook_task:
+            notebook_path: ../src/reverse_etl/upsert_to_aurora.py
+      job_clusters:
+        - job_cluster_key: batch_pool
+          new_cluster:
+            policy_id: ${var.cluster_policy_id_batch}
+            instance_pool_id: ${var.instance_pool_id}
+            num_workers: 1 # small, throttled - this is a write path into a shared application database
