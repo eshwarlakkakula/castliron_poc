@@ -1,0 +1,1 @@
+Mount script prepared successfully. Please continue to the next step.

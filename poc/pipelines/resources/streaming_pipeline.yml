@@ -1,0 +1,16 @@
+resources:
+  pipelines:
+    event_streaming_pipeline:
+      name: "${bundle.target}-event-streaming-pipeline"
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      continuous: true
+      serverless: true
+      photon: true
+      libraries:
+        - notebook:
+            path: ../src/streaming/bronze_silver_gold_pipeline.py
+      configuration:
+        ingest.kinesis_stream_name: ${var.kinesis_stream_name}
+        ingest.kinesis_region: ${var.kinesis_region}
+        ingest.kinesis_service_credential: ${var.kinesis_service_credential}

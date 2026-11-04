@@ -1,0 +1,30 @@
+bundle:
+  name: castiron-poc
+
+variables:
+  catalog:
+    description: "Unity Catalog catalog for POC tables"
+    default: castiron_poc
+  schema:
+    description: "Schema within the catalog for the streaming pipeline tables"
+    default: event_pipeline
+  kinesis_stream_name:
+    description: "Kinesis stream read directly by the streaming pipeline via a Unity Catalog service credential"
+    default: castiron-poc-ad-server-events
+  kinesis_region:
+    description: "AWS region of the Kinesis stream"
+    default: ap-south-1
+  kinesis_service_credential:
+    description: "Unity Catalog service credential name granting read access to the Kinesis stream"
+    default: castiron-poc-kinesis
+  identifiers_volume_path:
+    description: "Unity Catalog volume path holding identifiers.parquet and probes.parquet from generate_sample_identifiers.py"
+    default: /Volumes/castiron_poc/event_pipeline/identity_inputs
+
+include:
+  - resources/*.yml
+
+targets:
+  poc:
+    mode: development
+    default: true

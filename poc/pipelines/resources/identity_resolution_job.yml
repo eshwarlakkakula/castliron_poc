@@ -1,0 +1,17 @@
+resources:
+  jobs:
+    identity_resolution_job:
+      name: "${bundle.target}-identity-resolution-job"
+      tasks:
+        - task_key: resolve_identity
+          notebook_task:
+            notebook_path: ../src/identity/resolve_identity.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              identifiers_volume_path: ${var.identifiers_volume_path}
+          environment_key: serverless
+      environments:
+        - environment_key: serverless
+          spec:
+            client: "3"

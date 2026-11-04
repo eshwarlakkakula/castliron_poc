@@ -1,0 +1,20 @@
+aws_region          = "ap-south-1"
+name_prefix         = "castiron-poc"
+kinesis_shard_count = 1
+
+# Restrict to the IP(s) that need direct Aurora access (e.g. your own, for psql/validation)
+aurora_allowed_cidr_blocks = ["YOUR_IP_ADDRESS/32"]
+aurora_min_capacity        = 0.5
+aurora_max_capacity        = 1
+
+# Obtained from: databricks storage-credentials create --skip-validation
+# (see POC-Validation-Log.md section 3 for the full bootstrap sequence)
+databricks_unity_catalog_principal_arn = "arn:aws:iam::<databricks-account-id>:role/unity-catalog-prod-UCMasterRole-<id>"
+databricks_external_id                 = "<external-id-from-storage-credential-creation>"
+
+tags = {
+  Client      = "CastIron-Media"
+  Project     = "CastIron-Phase1-POC"
+  Environment = "poc"
+  Owner       = "<your-name>"
+}
