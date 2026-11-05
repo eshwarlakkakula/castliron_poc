@@ -1,3 +1,4 @@
+import os
 import pathlib
 
 import snowflake.connector
@@ -5,8 +6,8 @@ import snowflake.connector
 token = pathlib.Path(__file__).parent.parent.joinpath(".snowflake_pat").read_text().strip()
 
 conn = snowflake.connector.connect(
-    account="zmxpezl-wu66003",
-    user="VEERA664",
+    account=os.environ["SNOWFLAKE_ACCOUNT"],
+    user=os.environ["SNOWFLAKE_USER"],
     token=token,
     role="ACCOUNTADMIN",
     authenticator="PROGRAMMATIC_ACCESS_TOKEN",

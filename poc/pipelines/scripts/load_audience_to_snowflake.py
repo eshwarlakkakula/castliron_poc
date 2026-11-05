@@ -1,3 +1,4 @@
+import os
 import pathlib
 
 import snowflake.connector
@@ -6,8 +7,8 @@ token = pathlib.Path(__file__).parent.parent.joinpath(".snowflake_pat").read_tex
 csv_path = pathlib.Path(__file__).parent.joinpath("downloaded", "castiron_audience_export.csv").resolve()
 
 conn = snowflake.connector.connect(
-    account="zmxpezl-wu66003",
-    user="VEERA664",
+    account=os.environ["SNOWFLAKE_ACCOUNT"],
+    user=os.environ["SNOWFLAKE_USER"],
     token=token,
     role="ACCOUNTADMIN",
     authenticator="PROGRAMMATIC_ACCESS_TOKEN",

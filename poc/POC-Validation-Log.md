@@ -9,7 +9,7 @@ Engineering runbook documenting how the Phase 1 lakehouse POC was deployed and v
 | AWS region | `ap-south-1` (matches Databricks workspace region) |
 | AWS account | Shared account; resources scoped/tagged `Client = CastIron-Media`, `Owner = veera.danthuluri` |
 | Databricks workspace | `https://dbc-d832a089-86bc.cloud.databricks.com` (trial, serverless-only compute) |
-| Snowflake account | `zmxpezl-wu66003`, trial with Data Clean Rooms app installed |
+| Snowflake account | `<snowflake_account_locator>` (set as `SNOWFLAKE_ACCOUNT` env var), trial with Data Clean Rooms app installed |
 | IaC | Terraform, `infrastructure/environments/poc/` composing 5 modules |
 
 ## 2. AWS Infrastructure (Terraform)
@@ -38,7 +38,7 @@ Deployed via `terraform apply` in `infrastructure/environments/poc/`:
 
 1. **Classic compute unavailable.** This AWS Databricks trial workspace only supports **serverless compute** — no classic clusters at all. Production design assumed a classic, instance-profile-authenticated cluster; not available here.
 2. **Raw AWS credentials blocked on serverless.** Unity Catalog's governance model on serverless/shared clusters hard-blocks passing raw AWS access keys via `.option("awsAccessKeyId", ...)` to a streaming source (`UNSUPPORTED_STREAMING_OPTIONS_PERMISSION_ENFORCED`) — a platform security policy, not fixable in code.
-3. **Interim workaround (since superseded):** a boto3 bridge script (`pipelines/scripts/kinesis_to_s3_bridge.py`) polled Kinesis and wrote NDJSON batches to S3, picked up by Databricks Auto Loader. This avoided the credential restriction but added an S3 hop that doesn't exist in the production design. Kept in the repo for reference/fallback, no longer used by the deployed pipeline.
+3. **Interim workaround (since superseded and removed from the repo):** a boto3 bridge script polled Kinesis and wrote NDJSON batches to S3, picked up by Databricks Auto Loader. This avoided the credential restriction but added an S3 hop that doesn't exist in the production design. Dropped once the real fix below was in place; this log entry is the only remaining record of it.
 4. **Real fix — Unity Catalog Service Credential.** Databricks Runtime 16.1+ supports authenticating a Kinesis streaming source via a named UC **service credential** (`.option("serviceCredential", "<name>")`) instead of raw keys — this is the governance-compliant path serverless actually allows. Created via:
    ```
    databricks credentials create-credential --json '{"name": "castiron-poc-kinesis", "purpose": "SERVICE",
@@ -69,10 +69,10 @@ Identity resolution job YAML uses `environment_key` + `environments: [{spec: {cl
 
 ## 6. End-to-end pipeline validation
 
-**Initial run (2026-11-03, via the since-superseded S3 bridge):**
+**Initial run (2026-11-03, via the since-superseded and removed S3 bridge script):**
 ```
 python scripts/generate_sample_events.py --stream-name castiron-poc-ad-server-events --region ap-south-1 --count 200 --batch-size 25
-python scripts/kinesis_to_s3_bridge.py --stream-name castiron-poc-ad-server-events --landing-path s3://castiron-poc-unity-catalog-storage/raw-events --region ap-south-1
+# the bridge script that ran here has since been removed from the repo — see section 4, step 3
 databricks pipelines start-update <pipeline_id> --profile castiron-poc   # DLT bronze→silver→gold
 databricks jobs run-now <job_id> --profile castiron-poc                  # identity resolution
 ```
@@ -93,8 +93,8 @@ Result: all 20 events appeared in `bronze_events` / `silver_corrected_events` / 
 SSO/`externalbrowser` auth failed (no SAML IdP configured on this account). Resolved using a Programmatic Access Token (PAT):
 ```python
 snowflake.connector.connect(
-    account="zmxpezl-wu66003",
-    user="VEERA664",           # Snowflake username, NOT email — this was the actual fix after several "invalid token" errors
+    account=os.environ["SNOWFLAKE_ACCOUNT"],
+    user=os.environ["SNOWFLAKE_USER"],  # Snowflake username, NOT email — this was the actual fix after several "invalid token" errors
     token=token,
     role="ACCOUNTADMIN",
     authenticator="PROGRAMMATIC_ACCESS_TOKEN",
