@@ -3,5 +3,5 @@
 *.tfstate
 *.tfstate.*
 *.tfvars
-!environments/*/tfvars/*.tfvars
+!environments/*/tfvars/*.tfvars.example
 tfplan
